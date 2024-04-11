@@ -1,37 +1,72 @@
 import fetch from 'node-fetch';
 import pkg from 'lodash';
-const { min, max } = pkg;
+import TelegramBot from 'node-telegram-bot-api';
+import WebSocket from 'ws';
 
 const time = Date.now();
+const { min, max } = pkg;
+const bot = new TelegramBot('6904069684:AAEi1yT2PWAn-CrMaGAq2BROFGwW7Ju1WNgs');
+const chatId = '1809955072';
+
+const puntosAltos = [];
+const puntosBajos = [];
+
+async function obtenerPrecioBitcoin() {
+    const response = await fetch(
+        'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',
+    );
+    const data = await response.json();
+    return data.price;
+}
+
+function esBuenMomentoParaComprar(puntosAltos, puntosBajos, precioActual) {
+    // Calcular el rango de precios
+    const rangoPrecios = puntosAltos[0].precio - puntosBajos[0].precio;
+
+    // Calcular la desviación estándar
+    const desviacionEstandar = Math.sqrt(
+        puntosAltos
+            .map((punto) => Math.pow(punto.precio - precioActual, 2))
+            .reduce((a, b) => a + b) / puntosAltos.length,
+    );
+
+    // Calcular el ratio de Sharpe
+    const ratioSharpe =
+        (precioActual - puntosBajos[0].precio) / desviacionEstandar;
+
+    // Indicadores para determinar si es buen momento para comprar
+    const comprarSencillo = precioActual < puntosBajos[0].precio;
+    const comprarRatioSharpe = ratioSharpe > 1;
+
+    // Mostrar información
+    console.log(`**Precio actual:** ${precioActual}`);
+    console.log(`**Rango de precios:** ${rangoPrecios}`);
+    console.log(`**Desviación estándar:** ${desviacionEstandar}`);
+    console.log(`**Ratio de Sharpe:** ${ratioSharpe}`);
+
+    // Devolver la recomendación
+    if (comprarSencillo && comprarRatioSharpe) {
+        return '¡Es un buen momento para comprar Bitcoin!';
+    } else if (comprarSencillo) {
+        return 'Podría ser un buen momento para comprar Bitcoin, pero el ratio de Sharpe no es tan favorable.';
+    } else if (comprarRatioSharpe) {
+        return 'El ratio de Sharpe indica que podría ser un buen momento para comprar Bitcoin, pero el precio actual está por encima del mínimo reciente.';
+    } else {
+        return 'No es un buen momento para comprar Bitcoin.';
+    }
+}
 
 const run = async () => {
     const response = await fetch(
         `https://www.binance.com/api/v3/klines?endTime=${time}&limit=1000&symbol=BTCUSDT&interval=30m`,
     );
     const data = await response.json();
-    console.log(data);
 
-    // let highestPrice = 0;
-    // let lowestPrice = 9999999;
-    // data.forEach((item) => {
-    //     const priceHigh = parseFloat(item[2]);
-    //     const priceLow = parseFloat(item[3]);
-    //     if (priceHigh > highestPrice) {
-    //         highestPrice = priceHigh;
-    //     }
-    //     if (priceLow < lowestPrice) {
-    //         lowestPrice = priceLow;
-    //     }
-    // });
-    // console.log('Highest Price:', highestPrice);
-    // console.log('Lowest Price:', lowestPrice);
+    const precioBitcoin = await obtenerPrecioBitcoin();
 
     const INTERVALO = 15 * 60 * 1000; // 15 minutos en milisegundos
     const PUNTOS_ALTOS = 5;
     const PUNTOS_BAJOS = 5;
-
-    const puntosAltos = [];
-    const puntosBajos = [];
 
     for (const bloque of data) {
         const timestamp = bloque[0];
@@ -79,6 +114,40 @@ const run = async () => {
 
     console.log('**5 puntos bajos:**');
     console.table(puntosBajos);
+
+    console.log(
+        esBuenMomentoParaComprar(puntosAltos, puntosBajos, precioBitcoin),
+    );
 };
 
 run();
+
+const ws = new WebSocket(
+    'wss://api.telegram.org/bot' + bot.token + '/websocket',
+);
+
+ws.onopen = () => {
+    console.log('Conectado al WebSocket de Telegram');
+};
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log(data);
+
+    // Si hay un mensaje para el chat, responder
+    if (data.message && data.message.chat.id === chatId) {
+        bot.sendMessage(chatId, 'Respuesta al mensaje: ' + data.message.text);
+        bot.sendMessage(
+            chatId,
+            esBuenMomentoParaComprar(
+                puntosAltos,
+                puntosBajos,
+                obtenerPrecioBitcoin,
+            ),
+        );
+    }
+};
+
+ws.onclose = () => {
+    console.log('Desconectado del WebSocket de Telegram');
+};
