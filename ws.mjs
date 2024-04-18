@@ -34,8 +34,12 @@ export class BinanceWs {
     }
 
     async runAlgorithm(data) {
-        console.log('running algorithm, price is: ', data.p)
+        console.log('')
+        console.log('Running algorithm --- ' + new Date(data.E).toLocaleString())  
+        console.log('BTC price is: ', Number(data.p))
+        console.log('Minimum price of the last week is: ', this.lastWeekPricesMin(Number(data.p)))
         const miliseconds  = 30 * 60 * 1000; // 30 minutes
+        // const miliseconds  = 0.5 * 60 * 1000; // 30 minutes
         const dataTime = data.E;
 
         // update btc prices array
@@ -43,7 +47,7 @@ export class BinanceWs {
             console.log(' --- updating btc prices array')
             // remove first element from array
             const newPrices = this.btcPrices.slice(0, this.btcPrices.length - 1)
-            newPrices.push({
+            newPrices.unshift({
                 timestamp: dataTime,
                 precio: Number(data.p)
             });
@@ -71,6 +75,11 @@ export class BinanceWs {
         const lowestPrice = Math.min(...lastWeekPrices);
 
         return price < lowestPrice;
+    }
+
+    lastWeekPricesMin() {
+        const lastWeekPrices = this.btcPrices.map(p => p.precio)
+        return Math.min(...lastWeekPrices);
     }
 
 }
